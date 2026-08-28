@@ -474,7 +474,11 @@ export default function BudgetsPage() {
                   <th className={`${TH} text-right w-36`}>{t('budgets.realized', 'Realized')}</th>
                   <th className={`${TH} text-right w-36`}>{t('budgets.difference', 'Difference')}</th>
                   <th className={`${TH} text-left w-56`}>{t('budgets.usage', 'Usage')}</th>
-                  {canWrite && <th className={`${TH} text-right w-20 pr-6`}></th>}
+                  {canWrite && (
+                    <th className={`${TH} text-right w-20 pr-6`}>
+                      <span className="sr-only">{t('common.actions', 'Actions')}</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#27272A]/50 text-sm font-mono text-foreground">
