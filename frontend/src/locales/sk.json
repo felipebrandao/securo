@@ -1118,9 +1118,9 @@
     "onlyMissingDesc": "Ponechá už nakonfigurované rozpočty a doplní iba chýbajúce kategórie.",
     "noSourceBudgets": "Vo vybranom zdrojovom mesiaci sa nenašli žiadne rozpočty.",
     "confirmCopy": "Potvrdiť a kopírovať",
-    "copySuccess": "Úspešne sa skopírovalo {{count}} rozpočtov",
+    "copySuccess": "Počet skopírovaných rozpočtov: {{count}}",
     "emptyStateTitle": "Pre tento mesiac ste zatiaľ nenastavili rozpočet.",
-    "emptyStateSubtitle": "Začnite manuálnym vytvorením rozpočtu alebo skopírujte nastavenia z predchádzajúceho mesiaca."
+    "emptyStateSubtitle": "Začnite manuálnym vytvorením rozpočtu."
   },
   "goals": {
     "title": "Ciele",

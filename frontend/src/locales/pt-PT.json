@@ -1035,7 +1035,7 @@
     "deleteScopeFuture": "Deste mês em diante",
     "deleteScopeFutureDesc": "Preserva o histórico dos meses anteriores e encerra o orçamento a partir deste mês.",
     "deleteScopeMonth": "Apenas este mês",
-    "deleteScopeMonthDesc": "Zera o orçamento somente neste mês. Volta ao normal no mês seguinte.",
+    "deleteScopeMonthDesc": "Define o orçamento como zero apenas neste mês. Retoma normalmente no mês seguinte.",
     "deleteScopeAll": "Todos os meses",
     "deleteScopeAllDesc": "Remove o orçamento por completo de todo o histórico passado e futuro.",
     "deleteSuccessFuture": "Orçamento recorrente encerrado a partir deste mês.",
@@ -1057,7 +1057,7 @@
     "confirmCopy": "Confirmar e Copiar",
     "copySuccess": "{{count}} orçamentos copiados com sucesso!",
     "emptyStateTitle": "Ainda não definiu um orçamento para este mês.",
-    "emptyStateSubtitle": "Crie um orçamento manualmente ou copie as definições do mês anterior para começar."
+    "emptyStateSubtitle": "Crie um orçamento manualmente para começar."
   },
   "goals": {
     "title": "Objetivos",

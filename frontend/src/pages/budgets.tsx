@@ -24,6 +24,7 @@ import { MonthPicker } from '@/components/ui/monthpicker'
 import { PageHeader } from '@/components/page-header'
 import { CategoryIcon } from '@/components/category-icon'
 import { TransactionDrillDown, type DrillDownFilter } from '@/components/transaction-drill-down'
+import { DeleteConfirmationDialog } from '@/components/delete-confirmation-dialog'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
@@ -65,10 +66,13 @@ export default function BudgetsPage() {
   const [deleteScope, setDeleteScope] = useState<'future' | 'month' | 'all'>('future')
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // Non-recurring delete confirmation state
+  const [deletingBudget, setDeletingBudget] = useState<{ id: string; categoryName: string } | null>(null)
+
   const monthStart = `${selectedMonth}-01`
   const monthEnd = `${selectedMonth}-${String(monthLastDay(selectedMonth)).padStart(2, '0')}`
 
-  const { data: budgetsList } = useQuery({
+  const { data: budgetsList, isLoading: budgetsLoading } = useQuery({
     queryKey: ['budgets', selectedMonth],
     queryFn: () => budgetsApi.list(monthParam),
   })
@@ -187,10 +191,10 @@ export default function BudgetsPage() {
 
   const handleDeleteBudget = (categoryId: string, categoryName: string, isRecurring: boolean) => {
     const budgetObj = budgetsList?.find(b => b.category_id === categoryId)
+    if (!budgetObj) return
+
     if (!isRecurring) {
-      if (budgetObj) {
-        deleteMutation.mutate(budgetObj.id)
-      }
+      setDeletingBudget({ id: budgetObj.id, categoryName })
       return
     }
 
@@ -198,7 +202,7 @@ export default function BudgetsPage() {
       categoryId,
       categoryName,
       isRecurring: true,
-      budgetId: budgetObj?.id,
+      budgetId: budgetObj.id,
     })
     setDeleteScope('future')
   }
@@ -211,10 +215,12 @@ export default function BudgetsPage() {
 
     try {
       if (deleteScope === 'all') {
-        if (budgetId) {
-          await budgetsApi.delete(budgetId)
-          toast.success(t('budgets.deleteSuccessAll', 'Recurring budget deleted from all months.'))
+        if (!budgetId) {
+          toast.error(t('common.error'))
+          return
         }
+        await budgetsApi.delete(budgetId)
+        toast.success(t('budgets.deleteSuccessAll', 'Recurring budget deleted from all months.'))
       } else if (deleteScope === 'month') {
         await budgetsApi.create({
           category_id: categoryId,
@@ -420,6 +426,8 @@ export default function BudgetsPage() {
                 {budgeted.map((b) => {
                   const diff = Number(b.budget_amount ?? 0) - Number(b.actual_amount)
                   const pct = b.percentage_used ?? 0
+                  const budgetObj = budgetsList?.find(item => item.category_id === b.category_id)
+                  const isBudgetResolving = budgetsLoading || !budgetObj
                   
                   return (
                     <tr
@@ -430,7 +438,16 @@ export default function BudgetsPage() {
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-3">
                           <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
-                          <span className="font-sans text-sm font-medium text-foreground">{b.category_name}</span>
+                          <button
+                            type="button"
+                            className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleCategoryClick(b.category_id, b.category_name)
+                            }}
+                          >
+                            {b.category_name}
+                          </button>
                           {b.is_recurring && (
                             <span title={t('budgets.recurringLabel')} className="text-muted-foreground ml-1">
                               <Repeat size={12} />
@@ -468,19 +485,20 @@ export default function BudgetsPage() {
                       </td>
                       {canWrite && (
                         <td className="py-4 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                             <button
-                              className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               onClick={() => handleEditBudget(b.category_id)}
+                              disabled={isBudgetResolving}
                               aria-label={t('common.edit')}
                               title={t('common.edit')}
                             >
                               <Pencil size={14} />
                             </button>
                             <button
-                              className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               onClick={() => handleDeleteBudget(b.category_id, b.category_name, b.is_recurring)}
-                              disabled={deleteMutation.isPending || isDeleting}
+                              disabled={isBudgetResolving || deleteMutation.isPending || isDeleting}
                               aria-label={t('common.delete')}
                               title={t('common.delete')}
                             >
@@ -548,7 +566,16 @@ export default function BudgetsPage() {
                     <td className="py-4 px-6 w-[250px]">
                       <div className="flex items-center gap-3">
                         <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
-                        <span className="font-sans text-sm font-medium text-foreground">{b.category_name}</span>
+                        <button
+                          type="button"
+                          className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleCategoryClick(b.category_id, b.category_name)
+                          }}
+                        >
+                          {b.category_name}
+                        </button>
                       </div>
                     </td>
                     <td className="py-4 px-6 text-right tabular-nums text-muted-foreground">
@@ -813,6 +840,23 @@ export default function BudgetsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmationDialog
+        open={!!deletingBudget}
+        title={t('budgets.confirmDeleteTitle', 'Delete Budget?')}
+        description={t('budgets.confirmDeleteDescription', {
+          name: deletingBudget?.categoryName ?? t('budgets.category', 'Category'),
+        })}
+        isPending={deleteMutation.isPending}
+        onClose={() => setDeletingBudget(null)}
+        onConfirm={() => {
+          if (deletingBudget) {
+            deleteMutation.mutate(deletingBudget.id, {
+              onSuccess: () => setDeletingBudget(null),
+            })
+          }
+        }}
+      />
     </div>
   )
 }

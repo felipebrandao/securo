@@ -1057,7 +1057,7 @@
     "confirmCopy": "Confirmar e Copiar",
     "copySuccess": "{{count}} orçamentos copiados com sucesso!",
     "emptyStateTitle": "Você ainda não definiu um orçamento para este mês.",
-    "emptyStateSubtitle": "Crie um orçamento manualmente ou copie as definições do mês anterior para começar."
+    "emptyStateSubtitle": "Crie um orçamento manualmente para começar."
   },
   "goals": {
     "title": "Metas",

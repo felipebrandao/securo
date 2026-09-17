@@ -1056,7 +1056,7 @@
     "confirmCopy": "確認してコピー",
     "copySuccess": "{{count}} 件の予算を正常にコピーしました",
     "emptyStateTitle": "今月の予算はまだ設定されていません。",
-    "emptyStateSubtitle": "手動で予算を作成するか、前月の定義をコピーして開始してください。"
+    "emptyStateSubtitle": "手動で予算を作成して開始してください。"
   },
   "goals": {
     "title": "目標",

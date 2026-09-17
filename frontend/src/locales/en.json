@@ -1056,7 +1056,7 @@
     "confirmCopy": "Confirm & Copy",
     "copySuccess": "{{count}} budgets copied successfully",
     "emptyStateTitle": "You haven't set a budget for this month yet.",
-    "emptyStateSubtitle": "Create a budget manually or copy definitions from the previous month to get started."
+    "emptyStateSubtitle": "Create a budget manually to get started."
   },
   "goals": {
     "title": "Goals",

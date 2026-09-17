@@ -1058,7 +1058,7 @@
     "confirmCopy": "Bevestigen & kopiëren",
     "copySuccess": "{{count}} budgetten succesvol gekopieerd",
     "emptyStateTitle": "Je hebt voor deze maand nog geen budget ingesteld.",
-    "emptyStateSubtitle": "Maak handmatig een budget aan of kopieer definities uit de vorige maand om te beginnen."
+    "emptyStateSubtitle": "Maak handmatig een budget aan om te beginnen."
   },
   "goals": {
     "title": "Doelen",

@@ -1103,9 +1103,9 @@
     "onlyMissingDesc": "Zachowuje skonfigurowane budżety i dodaje tylko brakujące kategorie.",
     "noSourceBudgets": "Nie znaleziono budżetów w wybranym miesiącu źródłowym.",
     "confirmCopy": "Potwierdź i kopiuj",
-    "copySuccess": "Pomyślnie skopiowano {{count}} budżetów!",
+    "copySuccess": "Liczba skopiowanych budżetów: {{count}}",
     "emptyStateTitle": "Nie zdefiniowano jeszcze budżetu na ten miesiąc.",
-    "emptyStateSubtitle": "Utwórz budżet ręcznie lub skopiuj definicje z poprzedniego miesiąca, aby zacząć."
+    "emptyStateSubtitle": "Utwórz budżet ręcznie, aby zacząć."
   },
   "goals": {
     "title": "Cele",
