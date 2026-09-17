@@ -13,7 +13,6 @@ from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.budget import (
     BudgetCreate,
-    BudgetRead,
     BudgetUpdate,
     BudgetVsActual,
 )
