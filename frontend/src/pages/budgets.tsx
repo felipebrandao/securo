@@ -134,8 +134,10 @@ export default function BudgetsPage() {
   const { budgeted, unbudgeted, kpis } = useMemo(() => {
     if (!comparisonList) return { budgeted: [], unbudgeted: [], kpis: null }
     
-    const budgeted = comparisonList.filter((b) => b.budget_amount !== null && b.budget_amount > 0)
-    const unbudgeted = comparisonList.filter((b) => (b.budget_amount === null || b.budget_amount === 0) && b.actual_amount > 0)
+    const budgeted = comparisonList.filter((b) => Number(b.budget_amount ?? 0) > 0)
+    const unbudgeted = comparisonList.filter(
+      (b) => Number(b.budget_amount ?? 0) <= 0 && Number(b.actual_amount ?? 0) > 0
+    )
     
     let totalPlanned = 0
     let totalRealized = 0
@@ -144,10 +146,12 @@ export default function BudgetsPage() {
     let exceeded = 0
 
     budgeted.forEach((b) => {
-      totalPlanned += Number(b.budget_amount ?? 0)
-      totalRealized += Number(b.actual_amount)
+      const budgetVal = Number(b.budget_amount ?? 0)
+      const actualVal = Number(b.actual_amount ?? 0)
+      totalPlanned += budgetVal
+      totalRealized += actualVal
       
-      const pct = b.percentage_used ?? 0
+      const pct = b.percentage_used ?? (budgetVal > 0 ? (actualVal / budgetVal) * 100 : 0)
       if (pct <= 100) within++
       else exceeded++
     })
@@ -176,6 +180,15 @@ export default function BudgetsPage() {
   }, [comparisonList])
 
   const openNewBudgetDialog = (categoryId?: string) => {
+    if (categoryId) {
+      const existing = budgetsList?.find((b) => b.category_id === categoryId)
+      if (existing) {
+        setEditing(existing)
+        setPreselectCategory(categoryId)
+        setDialogOpen(true)
+        return
+      }
+    }
     setEditing(null)
     setPreselectCategory(categoryId ?? null)
     setDialogOpen(true)
@@ -378,7 +391,7 @@ export default function BudgetsPage() {
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-rose-500 dark:bg-rose-400" />
                 <span className="text-muted-foreground font-medium">
-                  {unbudgeted.length} {t('budgets.statusUnbudgeted', 'sem orçamento')} ({mask(formatCurrency(kpis.totalUnbudgeted, userCurrency, locale))})
+                  {unbudgeted.length} {t('budgets.statusUnbudgeted', 'unbudgeted')} ({mask(formatCurrency(kpis.totalUnbudgeted, userCurrency, locale))})
                 </span>
               </div>
             )}
@@ -424,8 +437,10 @@ export default function BudgetsPage() {
               </thead>
               <tbody className="divide-y divide-border text-sm font-mono text-foreground">
                 {budgeted.map((b) => {
-                  const diff = Number(b.budget_amount ?? 0) - Number(b.actual_amount)
-                  const pct = b.percentage_used ?? 0
+                  const budgetVal = Number(b.budget_amount ?? 0)
+                  const actualVal = Number(b.actual_amount ?? 0)
+                  const diff = budgetVal - actualVal
+                  const pct = b.percentage_used ?? (budgetVal > 0 ? (actualVal / budgetVal) * 100 : 0)
                   const budgetObj = budgetsList?.find(item => item.category_id === b.category_id)
                   const isBudgetResolving = budgetsLoading || !budgetObj
                   
@@ -456,10 +471,10 @@ export default function BudgetsPage() {
                         </div>
                       </td>
                       <td className="py-4 px-6 text-right tabular-nums text-muted-foreground">
-                        {mask(formatCurrency(b.budget_amount ?? 0, userCurrency, locale))}
+                        {mask(formatCurrency(budgetVal, userCurrency, locale))}
                       </td>
                       <td className="py-4 px-6 text-right tabular-nums text-foreground">
-                        {mask(formatCurrency(b.actual_amount, userCurrency, locale))}
+                        {mask(formatCurrency(actualVal, userCurrency, locale))}
                       </td>
                       <td className={`py-4 px-6 text-right tabular-nums font-semibold ${diff < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         {diff < 0 ? '-' : ''}{mask(formatCurrency(Math.abs(diff), userCurrency, locale))}
@@ -556,49 +571,65 @@ export default function BudgetsPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[600px]">
+              <thead>
+                <tr className="bg-muted/40 border-b border-border">
+                  <th className={`${TH} text-left`}>{t('budgets.category')}</th>
+                  <th className={`${TH} text-right w-36`}>{t('budgets.planned', 'Planned')}</th>
+                  <th className={`${TH} text-right w-36`}>{t('budgets.realized', 'Realized')}</th>
+                  <th className={`${TH} text-right w-36`}>{t('budgets.difference', 'Difference')}</th>
+                  {canWrite && (
+                    <th className={`${TH} text-right w-28 pr-6`}>
+                      <span className="sr-only">{t('common.actions', 'Actions')}</span>
+                    </th>
+                  )}
+                </tr>
+              </thead>
               <tbody className="divide-y divide-border text-sm font-mono text-foreground">
-                {unbudgeted.map((b) => (
-                  <tr
-                    key={b.category_id}
-                    className="hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => handleCategoryClick(b.category_id, b.category_name)}
-                  >
-                    <td className="py-4 px-6 w-[250px]">
-                      <div className="flex items-center gap-3">
-                        <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
-                        <button
-                          type="button"
-                          className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleCategoryClick(b.category_id, b.category_name)
-                          }}
-                        >
-                          {b.category_name}
-                        </button>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-right tabular-nums text-muted-foreground">
-                      {mask(formatCurrency(0, userCurrency, locale))}
-                    </td>
-                    <td className="py-4 px-6 text-right tabular-nums text-foreground font-semibold">
-                      {mask(formatCurrency(b.actual_amount, userCurrency, locale))}
-                    </td>
-                    <td className="py-4 px-6 text-right tabular-nums font-semibold text-rose-500 dark:text-rose-400">
-                      -{mask(formatCurrency(b.actual_amount, userCurrency, locale))}
-                    </td>
-                    {canWrite && (
-                      <td className="py-4 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          className="text-primary hover:text-primary/80 text-xs font-semibold uppercase tracking-wider bg-transparent border-0 cursor-pointer"
-                          onClick={() => openNewBudgetDialog(b.category_id)}
-                        >
-                          {t('budgets.createBudgetAction', 'Create Budget')}
-                        </button>
+                {unbudgeted.map((b) => {
+                  const actualVal = Number(b.actual_amount ?? 0)
+                  return (
+                    <tr
+                      key={b.category_id}
+                      className="hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => handleCategoryClick(b.category_id, b.category_name)}
+                    >
+                      <td className="py-4 px-6 w-[250px]">
+                        <div className="flex items-center gap-3">
+                          <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
+                          <button
+                            type="button"
+                            className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleCategoryClick(b.category_id, b.category_name)
+                            }}
+                          >
+                            {b.category_name}
+                          </button>
+                        </div>
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="py-4 px-6 text-right tabular-nums text-muted-foreground">
+                        {mask(formatCurrency(0, userCurrency, locale))}
+                      </td>
+                      <td className="py-4 px-6 text-right tabular-nums text-foreground font-semibold">
+                        {mask(formatCurrency(actualVal, userCurrency, locale))}
+                      </td>
+                      <td className="py-4 px-6 text-right tabular-nums font-semibold text-rose-500 dark:text-rose-400">
+                        -{mask(formatCurrency(actualVal, userCurrency, locale))}
+                      </td>
+                      {canWrite && (
+                        <td className="py-4 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="text-primary hover:text-primary/80 text-xs font-semibold uppercase tracking-wider bg-transparent border-0 cursor-pointer"
+                            onClick={() => openNewBudgetDialog(b.category_id)}
+                          >
+                            {t('budgets.createBudgetAction', 'Create Budget')}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -734,7 +765,7 @@ export default function BudgetsPage() {
       <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null); setPreselectCategory(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? t('budgets.edit') : t('budgets.add')}</DialogTitle>
+            <DialogTitle>{editing && Number(editing.amount) > 0 ? t('budgets.edit') : t('budgets.add')}</DialogTitle>
           </DialogHeader>
           <form
             onSubmit={(e) => {
@@ -746,7 +777,12 @@ export default function BudgetsPage() {
                 updateMutation.mutate({ id: editing.id, amount })
               } else {
                 const category_id = fd.get('category_id') as string
-                createMutation.mutate({ category_id, amount, month: monthParam, is_recurring })
+                const existing = budgetsList?.find((b) => b.category_id === category_id)
+                if (existing) {
+                  updateMutation.mutate({ id: existing.id, amount })
+                } else {
+                  createMutation.mutate({ category_id, amount, month: monthParam, is_recurring })
+                }
               }
             }}
             className="space-y-4"
@@ -810,7 +846,7 @@ export default function BudgetsPage() {
                 type="number"
                 step="0.01"
                 min="0.01"
-                defaultValue={editing?.amount ?? ''}
+                defaultValue={editing && Number(editing.amount) > 0 ? editing.amount : ''}
                 placeholder="0.00"
                 required
                 autoFocus
@@ -834,7 +870,7 @@ export default function BudgetsPage() {
                 {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                {editing ? t('common.save') : t('common.create')}
+                {editing && Number(editing.amount) > 0 ? t('common.save') : t('common.create')}
               </Button>
             </DialogFooter>
           </form>
