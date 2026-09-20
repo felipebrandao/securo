@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { monthLabel, shiftMonth } from '@/lib/month-utils'
@@ -16,8 +16,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import type { Budget } from '@/types'
-import { Pencil, Trash2, Plus, Repeat, CalendarIcon, AlertCircle } from 'lucide-react'
+import type { Budget, BudgetVsActual } from '@/types'
+import { Pencil, Trash2, Plus, Repeat, CalendarIcon, AlertCircle, ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react'
 import { format } from 'date-fns'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { MonthPicker } from '@/components/ui/monthpicker'
@@ -42,6 +42,18 @@ function monthLastDay(m: string) {
 }
 
 const TH = 'text-[12px] font-mono font-medium tracking-wider text-muted-foreground uppercase py-4 px-6 border-b border-border'
+
+interface BudgetGroupSection {
+  id: string
+  name: string
+  icon: string
+  color: string
+  totalPlanned: number
+  totalRealized: number
+  diff: number
+  percentageUsed: number
+  items: BudgetVsActual[]
+}
 
 export default function BudgetsPage() {
   const { t, i18n } = useTranslation()
@@ -180,6 +192,186 @@ export default function BudgetsPage() {
       }
     }
   }, [comparisonList])
+
+  // Grouping calculations (budgeted and unbudgeted organized by category groups)
+  const { budgetedGroups, unbudgetedGroups } = useMemo(() => {
+    function buildSections(itemsList: BudgetVsActual[]) {
+      if (!itemsList || itemsList.length === 0) return []
+      
+      const sections: BudgetGroupSection[] = []
+      const knownGroupIds = new Set<string>()
+
+      if (groupsList && groupsList.length > 0) {
+        groupsList.forEach((group) => {
+          knownGroupIds.add(group.id)
+          const groupItems = itemsList.filter((b) => b.group_id === group.id)
+          if (groupItems.length === 0) return
+
+          // Sort child categories by actual_amount descending
+          groupItems.sort((a, b) => Number(b.actual_amount ?? 0) - Number(a.actual_amount ?? 0))
+
+          let totalPlanned = 0
+          let totalRealized = 0
+
+          groupItems.forEach((b) => {
+            totalPlanned += Number(b.budget_amount ?? 0)
+            totalRealized += Number(b.actual_amount ?? 0)
+          })
+
+          const diff = totalPlanned - totalRealized
+          const percentageUsed = totalPlanned > 0 ? (totalRealized / totalPlanned) * 100 : 0
+
+          sections.push({
+            id: group.id,
+            name: group.name,
+            icon: group.icon || 'folder',
+            color: group.color || '#6B7280',
+            totalPlanned,
+            totalRealized,
+            diff,
+            percentageUsed,
+            items: groupItems,
+          })
+        })
+      }
+
+      // Ungrouped items (group_id is null or not in groupsList)
+      const ungroupedItems = itemsList.filter((b) => !b.group_id || !knownGroupIds.has(b.group_id))
+      if (ungroupedItems.length > 0) {
+        ungroupedItems.sort((a, b) => Number(b.actual_amount ?? 0) - Number(a.actual_amount ?? 0))
+
+        let totalPlanned = 0
+        let totalRealized = 0
+
+        ungroupedItems.forEach((b) => {
+          totalPlanned += Number(b.budget_amount ?? 0)
+          totalRealized += Number(b.actual_amount ?? 0)
+        })
+
+        const diff = totalPlanned - totalRealized
+        const percentageUsed = totalPlanned > 0 ? (totalRealized / totalPlanned) * 100 : 0
+
+        sections.push({
+          id: '__ungrouped__',
+          name: t('groups.noGroup', 'No group'),
+          icon: 'folder',
+          color: '#6B7280',
+          totalPlanned,
+          totalRealized,
+          diff,
+          percentageUsed,
+          items: ungroupedItems,
+        })
+      }
+
+      return sections
+    }
+
+    return {
+      budgetedGroups: buildSections(budgeted),
+      unbudgetedGroups: buildSections(unbudgeted),
+    }
+  }, [budgeted, unbudgeted, groupsList, t])
+
+  // Collapsed group IDs state persisted in localStorage for budgeted categories
+  const [collapsedBudgetedGroupIds, setCollapsedBudgetedGroupIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('securo:budget-collapsed-groups')
+      if (stored) {
+        return new Set<string>(JSON.parse(stored))
+      }
+    } catch {
+      // ignore
+    }
+    return new Set<string>()
+  })
+
+  // Collapsed group IDs state persisted in localStorage for unbudgeted categories
+  const [collapsedUnbudgetedGroupIds, setCollapsedUnbudgetedGroupIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('securo:budget-unbudgeted-collapsed-groups')
+      if (stored) {
+        return new Set<string>(JSON.parse(stored))
+      }
+    } catch {
+      // ignore
+    }
+    return new Set<string>()
+  })
+
+  const toggleBudgetedGroupCollapse = (groupId: string) => {
+    setCollapsedBudgetedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      try {
+        localStorage.setItem('securo:budget-collapsed-groups', JSON.stringify(Array.from(next)))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  const toggleAllBudgetedGroups = () => {
+    const allIds = budgetedGroups.map((s) => s.id)
+    const allCollapsed = allIds.length > 0 && allIds.every((id) => collapsedBudgetedGroupIds.has(id))
+    
+    setCollapsedBudgetedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (allCollapsed) {
+        allIds.forEach((id) => next.delete(id))
+      } else {
+        allIds.forEach((id) => next.add(id))
+      }
+      try {
+        localStorage.setItem('securo:budget-collapsed-groups', JSON.stringify(Array.from(next)))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  const toggleUnbudgetedGroupCollapse = (groupId: string) => {
+    setCollapsedUnbudgetedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      try {
+        localStorage.setItem('securo:budget-unbudgeted-collapsed-groups', JSON.stringify(Array.from(next)))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  const toggleAllUnbudgetedGroups = () => {
+    const allIds = unbudgetedGroups.map((s) => s.id)
+    const allCollapsed = allIds.length > 0 && allIds.every((id) => collapsedUnbudgetedGroupIds.has(id))
+    
+    setCollapsedUnbudgetedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (allCollapsed) {
+        allIds.forEach((id) => next.delete(id))
+      } else {
+        allIds.forEach((id) => next.add(id))
+      }
+      try {
+        localStorage.setItem('securo:budget-unbudgeted-collapsed-groups', JSON.stringify(Array.from(next)))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
 
   const openNewBudgetDialog = (categoryId?: string) => {
     if (categoryId) {
@@ -414,9 +606,23 @@ export default function BudgetsPage() {
       {/* Main Budget Details Card */}
       <div className="bg-card border border-border rounded-xl overflow-hidden mb-8 shadow-sm">
         <div className="p-6 border-b border-border flex justify-between items-center bg-card flex-wrap gap-4">
-          <h2 className="text-[18px] font-semibold text-foreground">
-            {t('budgets.categoryBreakdown', 'Category Details')}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-[18px] font-semibold text-foreground">
+              {t('budgets.categoryBreakdown', 'Category Details')}
+            </h2>
+            {budgetedGroups.length > 0 && (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer px-2 py-1 rounded-md hover:bg-muted"
+                onClick={toggleAllBudgetedGroups}
+              >
+                <ChevronsUpDown size={13} />
+                {budgetedGroups.every((g) => collapsedBudgetedGroupIds.has(g.id))
+                  ? t('categories.expandAll', 'Expand all')
+                  : t('categories.collapseAll', 'Collapse all')}
+              </button>
+            )}
+          </div>
           {canWrite && (
             <div className="flex items-center gap-3">
               <Button
@@ -430,7 +636,7 @@ export default function BudgetsPage() {
           )}
         </div>
         
-        {budgeted && budgeted.length > 0 ? (
+        {budgetedGroups && budgetedGroups.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
@@ -448,93 +654,153 @@ export default function BudgetsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-sm font-mono text-foreground">
-                {budgeted.map((b) => {
-                  const budgetVal = Number(b.budget_amount ?? 0)
-                  const actualVal = Number(b.actual_amount ?? 0)
-                  const diff = budgetVal - actualVal
-                  const pct = b.percentage_used ?? (budgetVal > 0 ? (actualVal / budgetVal) * 100 : 0)
-                  const budgetObj = budgetsList?.find(item => item.category_id === b.category_id)
-                  const isBudgetResolving = budgetsLoading || !budgetObj
-                  
+                {budgetedGroups.map((group) => {
+                  const isCollapsed = collapsedBudgetedGroupIds.has(group.id)
                   return (
-                    <tr
-                      key={b.category_id}
-                      className="hover:bg-muted/50 transition-colors group cursor-pointer"
-                      onClick={() => handleCategoryClick(b.category_id, b.category_name)}
-                    >
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
-                          <button
-                            type="button"
-                            className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleCategoryClick(b.category_id, b.category_name)
-                            }}
-                          >
-                            {b.category_name}
-                          </button>
-                          {b.is_recurring && (
-                            <span title={t('budgets.recurringLabel')} className="text-muted-foreground ml-1">
-                              <Repeat size={12} />
+                    <React.Fragment key={group.id}>
+                      {/* Group Header Row */}
+                      <tr
+                        className="bg-muted/40 hover:bg-muted/60 transition-colors cursor-pointer select-none border-b border-border/80 font-sans"
+                        onClick={() => toggleBudgetedGroupCollapse(group.id)}
+                      >
+                        <td className="py-3 px-6">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground transition-transform duration-200">
+                              {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                             </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-right tabular-nums text-muted-foreground">
-                        {mask(formatCurrency(budgetVal, userCurrency, locale))}
-                      </td>
-                      <td className="py-4 px-6 text-right tabular-nums text-foreground">
-                        {mask(formatCurrency(actualVal, userCurrency, locale))}
-                      </td>
-                      <td className={`py-4 px-6 text-right tabular-nums font-semibold ${diff < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {diff < 0 ? '-' : ''}{mask(formatCurrency(Math.abs(diff), userCurrency, locale))}
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full transition-all duration-300 ${
-                                  pct > 100 ? 'bg-rose-500' : 'bg-emerald-500'
-                                }`}
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                          <span className={`w-12 text-right text-xs font-bold tabular-nums ${
-                            pct > 100 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                          }`}>
-                            {pct.toFixed(0)}%
-                          </span>
-                        </div>
-                      </td>
-                      {canWrite && (
-                        <td className="py-4 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                            <button
-                              className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              onClick={() => handleEditBudget(b.category_id)}
-                              disabled={isBudgetResolving}
-                              aria-label={t('common.edit')}
-                              title={t('common.edit')}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              onClick={() => handleDeleteBudget(b.category_id, b.category_name, b.is_recurring)}
-                              disabled={isBudgetResolving || deleteMutation.isPending || isDeleting}
-                              aria-label={t('common.delete')}
-                              title={t('common.delete')}
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <CategoryIcon icon={group.icon} color={group.color} size="sm" />
+                            <span className="font-semibold text-sm" style={{ color: group.color }}>
+                              {group.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground font-normal">
+                              ({group.items.length})
+                            </span>
                           </div>
                         </td>
-                      )}
-                    </tr>
+                        <td className="py-3 px-6 text-right tabular-nums font-semibold font-mono text-foreground">
+                          {mask(formatCurrency(group.totalPlanned, userCurrency, locale))}
+                        </td>
+                        <td className="py-3 px-6 text-right tabular-nums font-semibold font-mono text-foreground">
+                          {mask(formatCurrency(group.totalRealized, userCurrency, locale))}
+                        </td>
+                        <td className={`py-3 px-6 text-right tabular-nums font-semibold font-mono ${
+                          group.diff < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                        }`}>
+                          {group.diff < 0 ? '-' : ''}{mask(formatCurrency(Math.abs(group.diff), userCurrency, locale))}
+                        </td>
+                        <td className="py-3 px-6 font-mono">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${
+                                    group.percentageUsed > 100 ? 'bg-rose-500' : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.min(group.percentageUsed, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                            <span className={`w-12 text-right text-xs font-bold tabular-nums ${
+                              group.percentageUsed > 100 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                            }`}>
+                              {group.percentageUsed.toFixed(0)}%
+                            </span>
+                          </div>
+                        </td>
+                        {canWrite && <td className="py-3 px-6 text-right pr-6" aria-hidden="true" />}
+                      </tr>
+
+                      {/* Child Category Rows */}
+                      {!isCollapsed && group.items.map((b) => {
+                        const budgetVal = Number(b.budget_amount ?? 0)
+                        const actualVal = Number(b.actual_amount ?? 0)
+                        const diff = budgetVal - actualVal
+                        const pct = b.percentage_used ?? (budgetVal > 0 ? (actualVal / budgetVal) * 100 : 0)
+                        const budgetObj = budgetsList?.find(item => item.category_id === b.category_id)
+                        const isBudgetResolving = budgetsLoading || !budgetObj
+                        
+                        return (
+                          <tr
+                            key={b.category_id}
+                            className="hover:bg-muted/50 transition-colors group cursor-pointer"
+                            onClick={() => handleCategoryClick(b.category_id, b.category_name)}
+                          >
+                            <td className="py-3.5 px-6 pl-12">
+                              <div className="flex items-center gap-3">
+                                <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
+                                <button
+                                  type="button"
+                                  className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCategoryClick(b.category_id, b.category_name)
+                                  }}
+                                >
+                                  {b.category_name}
+                                </button>
+                                {b.is_recurring && (
+                                  <span title={t('budgets.recurringLabel')} className="text-muted-foreground ml-1">
+                                    <Repeat size={12} />
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-6 text-right tabular-nums text-muted-foreground">
+                              {mask(formatCurrency(budgetVal, userCurrency, locale))}
+                            </td>
+                            <td className="py-3.5 px-6 text-right tabular-nums text-foreground">
+                              {mask(formatCurrency(actualVal, userCurrency, locale))}
+                            </td>
+                            <td className={`py-3.5 px-6 text-right tabular-nums font-semibold ${diff < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {diff < 0 ? '-' : ''}{mask(formatCurrency(Math.abs(diff), userCurrency, locale))}
+                            </td>
+                            <td className="py-3.5 px-6">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1">
+                                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full transition-all duration-300 ${
+                                        pct > 100 ? 'bg-rose-500' : 'bg-emerald-500'
+                                      }`}
+                                      style={{ width: `${Math.min(pct, 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                                <span className={`w-12 text-right text-xs font-bold tabular-nums ${
+                                  pct > 100 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                }`}>
+                                  {pct.toFixed(0)}%
+                                </span>
+                              </div>
+                            </td>
+                            {canWrite && (
+                              <td className="py-3.5 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                                  <button
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => handleEditBudget(b.category_id)}
+                                    disabled={isBudgetResolving}
+                                    aria-label={t('common.edit')}
+                                    title={t('common.edit')}
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => handleDeleteBudget(b.category_id, b.category_name, b.is_recurring)}
+                                    disabled={isBudgetResolving || deleteMutation.isPending || isDeleting}
+                                    aria-label={t('common.delete')}
+                                    title={t('common.delete')}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
+                    </React.Fragment>
                   )
                 })}
               </tbody>
@@ -568,18 +834,32 @@ export default function BudgetsPage() {
       </div>
 
       {/* Expenses without Budget Section */}
-      {unbudgeted && unbudgeted.length > 0 && (
+      {unbudgetedGroups && unbudgetedGroups.length > 0 && (
         <div id="unbudgeted-expenses-section" className="bg-card border border-border rounded-xl overflow-hidden mb-8 shadow-sm">
-          <div className="p-6 border-b border-border bg-rose-500/5 dark:bg-rose-500/10">
-            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 mb-1">
-              <AlertCircle size={18} />
-              <h2 className="text-[18px] font-semibold text-foreground">
-                {t('budgets.unbudgetedExpenses', 'Expenses without Budget')}
-              </h2>
+          <div className="p-6 border-b border-border bg-rose-500/5 dark:bg-rose-500/10 flex justify-between items-center flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 mb-1">
+                <AlertCircle size={18} />
+                <h2 className="text-[18px] font-semibold text-foreground">
+                  {t('budgets.unbudgetedExpenses', 'Expenses without Budget')}
+                </h2>
+              </div>
+              <p className="text-xs text-muted-foreground ml-6">
+                {t('budgets.unbudgetedSubtitle', 'Categories with recorded expenses but no defined limit.')}
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground ml-6">
-              {t('budgets.unbudgetedSubtitle', 'Categories with recorded expenses but no defined limit.')}
-            </p>
+            {unbudgetedGroups.length > 0 && (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer px-2 py-1 rounded-md hover:bg-muted"
+                onClick={toggleAllUnbudgetedGroups}
+              >
+                <ChevronsUpDown size={13} />
+                {unbudgetedGroups.every((g) => collapsedUnbudgetedGroupIds.has(g.id))
+                  ? t('categories.expandAll', 'Expand all')
+                  : t('categories.collapseAll', 'Collapse all')}
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[600px]">
@@ -597,49 +877,88 @@ export default function BudgetsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-sm font-mono text-foreground">
-                {unbudgeted.map((b) => {
-                  const actualVal = Number(b.actual_amount ?? 0)
+                {unbudgetedGroups.map((group) => {
+                  const isCollapsed = collapsedUnbudgetedGroupIds.has(group.id)
                   return (
-                    <tr
-                      key={b.category_id}
-                      className="hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => handleCategoryClick(b.category_id, b.category_name)}
-                    >
-                      <td className="py-4 px-6 w-[250px]">
-                        <div className="flex items-center gap-3">
-                          <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
-                          <button
-                            type="button"
-                            className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleCategoryClick(b.category_id, b.category_name)
-                            }}
-                          >
-                            {b.category_name}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-right tabular-nums text-muted-foreground">
-                        {mask(formatCurrency(0, userCurrency, locale))}
-                      </td>
-                      <td className="py-4 px-6 text-right tabular-nums text-foreground font-semibold">
-                        {mask(formatCurrency(actualVal, userCurrency, locale))}
-                      </td>
-                      <td className="py-4 px-6 text-right tabular-nums font-semibold text-rose-500 dark:text-rose-400">
-                        -{mask(formatCurrency(actualVal, userCurrency, locale))}
-                      </td>
-                      {canWrite && (
-                        <td className="py-4 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            className="text-primary hover:text-primary/80 text-xs font-semibold uppercase tracking-wider bg-transparent border-0 cursor-pointer"
-                            onClick={() => openNewBudgetDialog(b.category_id)}
-                          >
-                            {t('budgets.createBudgetAction', 'Create Budget')}
-                          </button>
+                    <React.Fragment key={group.id}>
+                      {/* Group Header Row */}
+                      <tr
+                        className="bg-muted/40 hover:bg-muted/60 transition-colors cursor-pointer select-none border-b border-border/80 font-sans"
+                        onClick={() => toggleUnbudgetedGroupCollapse(group.id)}
+                      >
+                        <td className="py-3 px-6 w-[250px]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground transition-transform duration-200">
+                              {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+                            </span>
+                            <CategoryIcon icon={group.icon} color={group.color} size="sm" />
+                            <span className="font-semibold text-sm" style={{ color: group.color }}>
+                              {group.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground font-normal">
+                              ({group.items.length})
+                            </span>
+                          </div>
                         </td>
-                      )}
-                    </tr>
+                        <td className="py-3 px-6 text-right tabular-nums font-semibold font-mono text-muted-foreground">
+                          {mask(formatCurrency(0, userCurrency, locale))}
+                        </td>
+                        <td className="py-3 px-6 text-right tabular-nums font-semibold font-mono text-foreground">
+                          {mask(formatCurrency(group.totalRealized, userCurrency, locale))}
+                        </td>
+                        <td className="py-3 px-6 text-right tabular-nums font-semibold font-mono text-rose-500 dark:text-rose-400">
+                          -{mask(formatCurrency(group.totalRealized, userCurrency, locale))}
+                        </td>
+                        {canWrite && <td className="py-3 px-6 text-right pr-6" aria-hidden="true" />}
+                      </tr>
+
+                      {/* Child Category Rows */}
+                      {!isCollapsed && group.items.map((b) => {
+                        const actualVal = Number(b.actual_amount ?? 0)
+                        return (
+                          <tr
+                            key={b.category_id}
+                            className="hover:bg-muted/50 transition-colors cursor-pointer"
+                            onClick={() => handleCategoryClick(b.category_id, b.category_name)}
+                          >
+                            <td className="py-3.5 px-6 pl-12 w-[250px]">
+                              <div className="flex items-center gap-3">
+                                <CategoryIcon icon={b.category_icon} color={b.category_color} size="sm" />
+                                <button
+                                  type="button"
+                                  className="font-sans text-sm font-medium text-foreground hover:underline text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCategoryClick(b.category_id, b.category_name)
+                                  }}
+                                >
+                                  {b.category_name}
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-6 text-right tabular-nums text-muted-foreground">
+                              {mask(formatCurrency(0, userCurrency, locale))}
+                            </td>
+                            <td className="py-3.5 px-6 text-right tabular-nums text-foreground font-semibold">
+                              {mask(formatCurrency(actualVal, userCurrency, locale))}
+                            </td>
+                            <td className="py-3.5 px-6 text-right tabular-nums font-semibold text-rose-500 dark:text-rose-400">
+                              -{mask(formatCurrency(actualVal, userCurrency, locale))}
+                            </td>
+                            {canWrite && (
+                              <td className="py-3.5 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  className="text-primary hover:text-primary/80 text-xs font-semibold uppercase tracking-wider bg-transparent border-0 cursor-pointer"
+                                  onClick={() => openNewBudgetDialog(b.category_id)}
+                                >
+                                  {t('budgets.createBudgetAction', 'Create Budget')}
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
+                    </React.Fragment>
                   )
                 })}
               </tbody>
