@@ -158,7 +158,9 @@ export default function BudgetsPage() {
     
     let totalUnbudgeted = 0
     unbudgeted.forEach((b) => {
-      totalUnbudgeted += Number(b.actual_amount ?? 0)
+      const unbudgetedVal = Number(b.actual_amount ?? 0)
+      totalUnbudgeted += unbudgetedVal
+      totalRealized += unbudgetedVal
     })
     
     const available = totalPlanned - totalRealized
@@ -388,12 +390,22 @@ export default function BudgetsPage() {
               </span>
             </div>
             {unbudgeted.length > 0 && (
-              <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-0 p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                onClick={() => {
+                  const el = document.getElementById('unbudgeted-expenses-section')
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }
+                }}
+                title={t('budgets.unbudgetedSubtitle', 'Categories with recorded expenses but no defined limit.')}
+              >
                 <div className="w-2 h-2 rounded-full bg-rose-500 dark:bg-rose-400" />
-                <span className="text-muted-foreground font-medium">
+                <span className="text-muted-foreground hover:text-foreground font-medium transition-colors">
                   {unbudgeted.length} {t('budgets.statusUnbudgeted', 'unbudgeted')} ({mask(formatCurrency(kpis.totalUnbudgeted, userCurrency, locale))})
                 </span>
-              </div>
+              </button>
             )}
           </div>
         </div>
@@ -557,7 +569,7 @@ export default function BudgetsPage() {
 
       {/* Expenses without Budget Section */}
       {unbudgeted && unbudgeted.length > 0 && (
-        <div className="bg-card border border-border rounded-xl overflow-hidden mb-8 shadow-sm">
+        <div id="unbudgeted-expenses-section" className="bg-card border border-border rounded-xl overflow-hidden mb-8 shadow-sm">
           <div className="p-6 border-b border-border bg-rose-500/5 dark:bg-rose-500/10">
             <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 mb-1">
               <AlertCircle size={18} />
