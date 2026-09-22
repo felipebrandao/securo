@@ -71,6 +71,7 @@ export default function BudgetsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Budget | null>(null)
   const [preselectCategory, setPreselectCategory] = useState<string | null>(null)
+  const [preselectAmount, setPreselectAmount] = useState<string | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownFilter | null>(null)
 
   // Recurring delete modal state
@@ -373,18 +374,24 @@ export default function BudgetsPage() {
     })
   }
 
-  const openNewBudgetDialog = (categoryId?: string) => {
+  const openNewBudgetDialog = (categoryId?: string, defaultAmount?: number | string) => {
+    const formattedAmount = defaultAmount !== undefined && defaultAmount !== null && Number(defaultAmount) > 0
+      ? String(Number(defaultAmount).toFixed(2))
+      : null
+
     if (categoryId) {
       const existing = budgetsList?.find((b) => b.category_id === categoryId)
       if (existing) {
         setEditing(existing)
         setPreselectCategory(categoryId)
+        setPreselectAmount(formattedAmount)
         setDialogOpen(true)
         return
       }
     }
     setEditing(null)
     setPreselectCategory(categoryId ?? null)
+    setPreselectAmount(formattedAmount)
     setDialogOpen(true)
   }
   
@@ -949,7 +956,7 @@ export default function BudgetsPage() {
                               <td className="py-3.5 px-6 text-right pr-6" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   className="text-primary hover:text-primary/80 text-xs font-semibold uppercase tracking-wider bg-transparent border-0 cursor-pointer"
-                                  onClick={() => openNewBudgetDialog(b.category_id)}
+                                  onClick={() => openNewBudgetDialog(b.category_id, actualVal)}
                                 >
                                   {t('budgets.createBudgetAction', 'Create Budget')}
                                 </button>
@@ -1093,7 +1100,7 @@ export default function BudgetsPage() {
       </Dialog>
 
       {/* Creation/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null); setPreselectCategory(null) }}>
+      <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null); setPreselectCategory(null); setPreselectAmount(null) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editing && Number(editing.amount) > 0 ? t('budgets.edit') : t('budgets.add')}</DialogTitle>
@@ -1173,11 +1180,12 @@ export default function BudgetsPage() {
             <div className="space-y-1.5">
               <Label>{t('budgets.amount')}</Label>
               <Input
+                key={editing?.id ?? preselectCategory ?? 'new'}
                 name="amount"
                 type="number"
                 step="0.01"
                 min="0.01"
-                defaultValue={editing && Number(editing.amount) > 0 ? editing.amount : ''}
+                defaultValue={editing && Number(editing.amount) > 0 ? editing.amount : (preselectAmount ?? '')}
                 placeholder="0.00"
                 required
                 autoFocus
@@ -1197,7 +1205,7 @@ export default function BudgetsPage() {
               </div>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null); setPreselectCategory(null) }}>
+              <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null); setPreselectCategory(null); setPreselectAmount(null) }}>
                 {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
